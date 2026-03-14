@@ -1,0 +1,3 @@
+[submodule "external/yumouwei-smb"]
+	path = external/yumouwei-smb
+	url = https://github.com/yumouwei/super-mario-bros-reinforcement-learning.git
