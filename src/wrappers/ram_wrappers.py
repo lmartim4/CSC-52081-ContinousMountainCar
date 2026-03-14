@@ -3,62 +3,35 @@
 Builds a compact 13x16 grid directly from the NES RAM, encoding tiles,
 enemies, and Mario's position — no pixel processing needed.
 
+Delegates grid construction to the external submodule:
+  external/yumouwei-smb/smb_utils.py  (smb_grid class)
+
 References:
   - RAM map: https://datacrystal.tcrf.net/wiki/Super_Mario_Bros./RAM_map
   - Tile grid: yumouwei/super-mario-bros-reinforcement-learning (smb_utils.py)
-  - Enemy logic: Chrispresso/SuperMarioBros-AI (utils.py)
 """
 
+import os
+import sys
 import gym
 import numpy as np
 from gym import spaces
 
-# ---------------------------------------------------------------------------
-# NES RAM addresses for Super Mario Bros.
-# Reference: https://datacrystal.tcrf.net/wiki/Super_Mario_Bros./RAM_map
-# ---------------------------------------------------------------------------
+# Make the external submodule importable
+_SUBMODULE_DIR = os.path.join(
+    os.path.dirname(__file__), os.pardir, os.pardir, "external", "yumouwei-smb"
+)
+_SUBMODULE_DIR = os.path.abspath(_SUBMODULE_DIR)
+if _SUBMODULE_DIR not in sys.path:
+    sys.path.insert(0, _SUBMODULE_DIR)
 
-# --- Tiles ---
-# The level tiles are stored as two 16×13 pages (= 32×13 total) at 0x0500.
-# Each byte != 0 is a "solid" tile (block, pipe, ground, brick, etc.).
-TILE_RAM_START = 0x0500
-TILE_RAM_END = 0x069F  # inclusive → 416 bytes = 32 cols × 13 rows
-TILE_COLS_TOTAL = 32  # two 16-col pages side by side
-TILE_ROWS = 13
+from smb_utils import smb_grid  # noqa: E402
 
-# --- Screen scroll ---
-# Which 256-px "page" of the level the screen is currently showing.
-CURRENT_SCREEN_PAGE = 0x071A
-# How many pixels into that page the screen has scrolled (0–255).
-SCREEN_X_SCROLL = 0x071C
-
-# --- Player ---
-PLAYER_X_POS_SCREEN = 0x0086  # x position on screen (pixels)
-PLAYER_Y_POS_SCREEN = 0x00CE  # y position on screen (pixels)
-PLAYER_STATE = 0x000E  # 0x08 = normal, 0x06/0x0B = dying, etc.
-PLAYER_POWERUP = 0x0756  # 0=small, 1=big, >=2=fire
-PLAYER_FLOAT = 0x001D  # 0=ground, 1=jumping, 2=falling
-
-# --- Enemies (5 slots: addr + 0..4) ---
-ENEMY_DRAWN = 0x000F  # 5 bytes: 1 = active on screen
-ENEMY_TYPE = 0x0016  # 5 bytes: enemy type id
-ENEMY_X_POS_SCREEN = 0x0087  # 5 bytes: x on screen (pixels)
-ENEMY_Y_POS_SCREEN = 0x00CF  # 5 bytes: y on screen (pixels)
-ENEMY_X_PAGE = 0x006E  # 5 bytes: horizontal position in level
-
-MAX_ENEMIES = 5
-
-# --- Powerup ---
-POWERUP_DRAWN = 0x0014  # 1 = powerup on screen
-POWERUP_X_SCREEN = 0x008C
-POWERUP_Y_SCREEN = 0x00D4
-
-# Grid encoding values
+# Grid encoding values (same convention as smb_grid)
 EMPTY = 0
 SOLID = 1
 ENEMY = -1
 MARIO = 2
-POWERUP = 3
 
 # Visible grid dimensions (what the screen shows)
 VISIBLE_COLS = 16
@@ -66,14 +39,15 @@ VISIBLE_ROWS = 13
 
 
 class RAMGridObservation(gym.ObservationWrapper):
-    """Convert the pixel observation into a 13×16 symbolic grid read from RAM.
+    """Convert the pixel observation into a 13x16 symbolic grid read from RAM.
+
+    Delegates to smb_grid from external/yumouwei-smb/smb_utils.py.
 
     The grid encodes:
        0 = empty / sky
        1 = solid tile (ground, brick, pipe, block, etc.)
       -1 = enemy
        2 = Mario
-       3 = powerup / item
 
     The observation is a float32 array of shape (13, 16).
     """
@@ -81,120 +55,15 @@ class RAMGridObservation(gym.ObservationWrapper):
     def __init__(self, env):
         super().__init__(env)
         self.observation_space = spaces.Box(
-            low=-1, high=3,
+            low=-1, high=2,
             shape=(VISIBLE_ROWS, VISIBLE_COLS),
             dtype=np.float32,
         )
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def observation(self, obs):
-        """Ignore the pixel obs; build grid from RAM instead."""
-        ram = self.unwrapped.ram
-        return self._build_grid(ram).astype(np.float32)
-
-    # ------------------------------------------------------------------
-    # Internal: grid construction
-    # ------------------------------------------------------------------
-
-    def _build_grid(self, ram):
-        """Build a 13×16 symbolic grid from the NES RAM."""
-        grid = np.zeros((VISIBLE_ROWS, VISIBLE_COLS), dtype=np.int32)
-
-        # 1) Read tile data ------------------------------------------------
-        self._fill_tiles(grid, ram)
-
-        # 2) Place enemies --------------------------------------------------
-        self._fill_enemies(grid, ram)
-
-        # 3) Place powerups -------------------------------------------------
-        self._fill_powerup(grid, ram)
-
-        # 4) Place Mario ----------------------------------------------------
-        self._fill_mario(grid, ram)
-
-        return grid
-
-    # --- Tiles -----------------------------------------------------------
-
-    def _fill_tiles(self, grid, ram):
-        """Read the 32×13 tile buffer and extract the 16-col visible window.
-
-        The NES stores tiles in two 16×13 pages at 0x0500.  The screen
-        scrolls across these pages; we compute which 16 columns are
-        currently visible and copy them into the grid.
-        """
-        # Full 32×13 tile buffer (column-major in RAM: each column is 13 bytes)
-        full_tiles = np.zeros((TILE_ROWS, TILE_COLS_TOTAL), dtype=np.int32)
-        for col in range(TILE_COLS_TOTAL):
-            for row in range(TILE_ROWS):
-                addr = TILE_RAM_START + col * TILE_ROWS + row
-                full_tiles[row, col] = ram[addr]
-
-        # Which column of the 32-col buffer corresponds to the left edge
-        # of the screen?  The screen page (0x071A) tells us which 256-px
-        # page we are on; each tile is 16 px wide, so one page = 16 tile cols.
-        # The scroll register (0x071C) gives the pixel offset within that page.
-        page = int(ram[CURRENT_SCREEN_PAGE])
-        scroll_px = int(ram[SCREEN_X_SCROLL])
-        start_col = (page % 2) * 16 + scroll_px // 16
-
-        for vc in range(VISIBLE_COLS):
-            src_col = (start_col + vc) % TILE_COLS_TOTAL
-            for row in range(TILE_ROWS):
-                if full_tiles[row, src_col] != 0:
-                    grid[row, vc] = SOLID
-
-    # --- Enemies ----------------------------------------------------------
-
-    @staticmethod
-    def _fill_enemies(grid, ram):
-        """Place active enemies onto the grid."""
-        for i in range(MAX_ENEMIES):
-            if ram[ENEMY_DRAWN + i] == 0:
-                continue
-
-            ex = int(ram[ENEMY_X_POS_SCREEN + i])
-            ey = int(ram[ENEMY_Y_POS_SCREEN + i])
-
-            col = ex // 16
-            row = (ey - 32) // 16  # subtract 32 px for the status bar
-
-            if 0 <= row < VISIBLE_ROWS and 0 <= col < VISIBLE_COLS:
-                grid[row, col] = ENEMY
-
-    # --- Powerup ----------------------------------------------------------
-
-    @staticmethod
-    def _fill_powerup(grid, ram):
-        """Place a powerup (mushroom / flower / star) on the grid."""
-        if ram[POWERUP_DRAWN] == 0:
-            return
-
-        px = int(ram[POWERUP_X_SCREEN])
-        py = int(ram[POWERUP_Y_SCREEN])
-
-        col = px // 16
-        row = (py - 32) // 16
-
-        if 0 <= row < VISIBLE_ROWS and 0 <= col < VISIBLE_COLS:
-            grid[row, col] = POWERUP
-
-    # --- Mario ------------------------------------------------------------
-
-    @staticmethod
-    def _fill_mario(grid, ram):
-        """Place Mario on the grid (always last so he is visible)."""
-        mx = int(ram[PLAYER_X_POS_SCREEN])
-        my = int(ram[PLAYER_Y_POS_SCREEN])
-
-        col = mx // 16
-        row = (my - 32) // 16
-
-        if 0 <= row < VISIBLE_ROWS and 0 <= col < VISIBLE_COLS:
-            grid[row, col] = MARIO
+        """Ignore the pixel obs; build grid from RAM via smb_grid."""
+        grid = smb_grid(self.env).rendered_screen
+        return grid.astype(np.float32)
 
 
 class FlattenGrid(gym.ObservationWrapper):
@@ -204,7 +73,7 @@ class FlattenGrid(gym.ObservationWrapper):
         super().__init__(env)
         flat_size = int(np.prod(self.observation_space.shape))
         self.observation_space = spaces.Box(
-            low=-1, high=3,
+            low=-1, high=2,
             shape=(flat_size,),
             dtype=np.float32,
         )
@@ -226,7 +95,7 @@ class FrameStackGrid(gym.Wrapper):
         self.n_skip = n_skip
         base_shape = env.observation_space.shape  # (13, 16)
         self.observation_space = spaces.Box(
-            low=-1, high=3,
+            low=-1, high=2,
             shape=(*base_shape, n_stack),
             dtype=np.float32,
         )

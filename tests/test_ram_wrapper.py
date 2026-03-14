@@ -21,7 +21,7 @@ from src.wrappers.ram_wrappers import (
     make_symbolic_env,
     RAMGridObservation,
     SkipFrame,
-    EMPTY, SOLID, ENEMY, MARIO, POWERUP,
+    EMPTY, SOLID, ENEMY, MARIO,
     VISIBLE_ROWS, VISIBLE_COLS,
 )
 
@@ -33,7 +33,6 @@ SYMBOLS = {
     SOLID:   "#",
     ENEMY:   "E",
     MARIO:   "M",
-    POWERUP: "?",
 }
 
 
@@ -149,7 +148,7 @@ def test_grid_values(n_steps=100):
 
     env.close()
 
-    valid_values = {EMPTY, SOLID, ENEMY, MARIO, POWERUP}
+    valid_values = {EMPTY, SOLID, ENEMY, MARIO}
     unexpected = all_values - valid_values
     print(f"  Values observed: {sorted(all_values)}")
     print(f"  Expected values: {sorted(valid_values)}")

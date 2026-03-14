@@ -23,7 +23,7 @@ import gym_super_mario_bros
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
 from src.wrappers.ram_wrappers import (
     RAMGridObservation, SkipFrame,
-    EMPTY, SOLID, ENEMY, MARIO, POWERUP,
+    EMPTY, SOLID, ENEMY, MARIO,
 )
 
 
@@ -32,17 +32,17 @@ def plot_comparison(pixel_obs, grid_obs, info, step, ax_pixel, ax_grid):
     ax_pixel.set_title(f"Pixels (240x256x3)\nstep={step}, x={info.get('x_pos', '?')}")
     ax_pixel.axis("off")
 
-    cmap = mcolors.ListedColormap(["red", "skyblue", "saddlebrown", "lime", "gold"])
-    bounds = [-1.5, -0.5, 0.5, 1.5, 2.5, 3.5]
+    cmap = mcolors.ListedColormap(["red", "skyblue", "saddlebrown", "lime"])
+    bounds = [-1.5, -0.5, 0.5, 1.5, 2.5]
     norm = mcolors.BoundaryNorm(bounds, cmap.N)
 
     ax_grid.imshow(grid_obs, cmap=cmap, norm=norm, interpolation="nearest")
-    ax_grid.set_title(f"RAM Grid (13x16)\n.=empty #=solid E=enemy M=mario ?=item")
+    ax_grid.set_title(f"RAM Grid (13x16)\n.=empty #=solid E=enemy M=mario")
     ax_grid.set_xticks(range(16))
     ax_grid.set_yticks(range(13))
     ax_grid.grid(True, color="gray", linewidth=0.5, alpha=0.3)
 
-    symbols = {EMPTY: "", SOLID: "#", ENEMY: "E", MARIO: "M", POWERUP: "?"}
+    symbols = {EMPTY: "", SOLID: "#", ENEMY: "E", MARIO: "M"}
     for r in range(13):
         for c in range(16):
             val = int(grid_obs[r, c])
