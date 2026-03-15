@@ -111,6 +111,8 @@ class FrameStackGrid(gym.Wrapper):
         self._frames = []
 
     def reset(self, **kwargs):
+        kwargs.pop('seed', None)
+        kwargs.pop('options', None)
         result = self.env.reset(**kwargs)
         obs, info = result if isinstance(result, tuple) else (result, {})
         self._frames = [obs] * (self.n_stack * self.n_skip)
@@ -147,6 +149,8 @@ class SkipFrame(gym.Wrapper):
         self.skip = skip
 
     def reset(self, **kwargs):
+        kwargs.pop('seed', None)
+        kwargs.pop('options', None)
         result = self.env.reset(**kwargs)
         obs, info = result if isinstance(result, tuple) else (result, {})
         return obs, info

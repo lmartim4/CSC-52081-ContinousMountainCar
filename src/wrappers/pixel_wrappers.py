@@ -58,15 +58,23 @@ class FrameStack(gym.Wrapper):
         )
 
     def reset(self, **kwargs):
-        obs = self.env.reset(**kwargs)
+        kwargs.pop('seed', None)
+        kwargs.pop('options', None)
+        result = self.env.reset(**kwargs)
+        obs, info = result if isinstance(result, tuple) else (result, {})
         for _ in range(self.k):
             self.frames.append(obs)
-        return self._get_obs()
+        return self._get_obs(), info
 
     def step(self, action):
-        obs, reward, done, info = self.env.step(action)
+        result = self.env.step(action)
+        if len(result) == 5:
+            obs, reward, done, truncated, info = result
+        else:
+            obs, reward, done, info = result
+            truncated = False
         self.frames.append(obs)
-        return self._get_obs(), reward, done, info
+        return self._get_obs(), reward, done, truncated, info
 
     def _get_obs(self):
         return np.concatenate(list(self.frames), axis=2)
@@ -79,14 +87,25 @@ class SkipFrame(gym.Wrapper):
         super().__init__(env)
         self.skip = skip
 
+    def reset(self, **kwargs):
+        kwargs.pop('seed', None)
+        kwargs.pop('options', None)
+        result = self.env.reset(**kwargs)
+        obs = result[0] if isinstance(result, tuple) else result
+        return obs, {}
+
     def step(self, action):
         total_reward = 0.0
         for _ in range(self.skip):
-            obs, reward, done, info = self.env.step(action)
+            result = self.env.step(action)
+            if len(result) == 5:
+                obs, reward, done, truncated, info = result
+            else:
+                obs, reward, done, info = result
             total_reward += reward
             if done:
                 break
-        return obs, total_reward, done, info
+        return obs, total_reward, done, False, info
 
 
 class NormalizeObservation(gym.ObservationWrapper):

@@ -12,6 +12,7 @@ pillow
 pyglet
 tqdm
 cloudpickle
+shimmy
 
 # Optional: notebook
 jupyter
