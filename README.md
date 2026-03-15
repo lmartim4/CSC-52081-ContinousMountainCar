@@ -10,15 +10,17 @@ source .venv/bin/activate.fish
 pip install -r requirements.txt
 ```
 
-### Apply NumPy 2.0 compatibility patches
+### Apply compatibility patches
 
-The dependencies `gym`, `nes-py`, and `gym-super-mario-bros` were written before NumPy 2.0 and require patching:
+The dependencies `gym`, `nes-py`, and `gym-super-mario-bros` were written before NumPy 2.0 and require patching.
+`gym`'s `TimeLimit` wrapper also uses the new 5-value step API while `nes-py` still returns the old 4-value API:
 
 ```fish
 set SITE (python -c "import site; print(site.getsitepackages()[0])")
 patch -p0 $SITE/nes_py/_rom.py                   < patches/nes_py_numpy2.patch
 patch -p0 $SITE/gym/utils/passive_env_checker.py < patches/gym_bool8_numpy2.patch
 patch -p0 $SITE/gym_super_mario_bros/smb_env.py  < patches/smb_env_numpy2.patch
+patch -p1 $SITE/gym/wrappers/time_limit.py       < patches/gym_time_limit_compat.patch
 ```
 
 ## Usage

@@ -83,8 +83,8 @@ def main():
 
     while snapshot < n_snapshots:
         action = actions[step % len(actions)]
-        pixel_obs, _, d1, info = env_raw.step(action)
-        grid_obs, _, d2, _ = env_sym.step(action)
+        pixel_obs, _, d1, d1t, info = env_raw.step(action)
+        grid_obs, _, d2, d2t, _ = env_sym.step(action)
         step += 1
 
         if step % steps_between == 0 or step == 1:
@@ -93,7 +93,7 @@ def main():
                             axes[snapshot, 0], axes[snapshot, 1])
             snapshot += 1
 
-        if d1 or d2:
+        if d1 or d1t or d2 or d2t:
             env_raw.reset()
             env_sym.reset()
 

@@ -111,16 +111,22 @@ class FrameStackGrid(gym.Wrapper):
         self._frames = []
 
     def reset(self, **kwargs):
-        obs = self.env.reset(**kwargs)
+        result = self.env.reset(**kwargs)
+        obs, info = result if isinstance(result, tuple) else (result, {})
         self._frames = [obs] * (self.n_stack * self.n_skip)
-        return self._get_stacked()
+        return self._get_stacked(), info
 
     def step(self, action):
-        obs, reward, done, info = self.env.step(action)
+        result = self.env.step(action)
+        if len(result) == 5:
+            obs, reward, terminated, truncated, info = result
+        else:
+            obs, reward, terminated, info = result
+            truncated = False
         self._frames.append(obs)
         if len(self._frames) > self.n_stack * self.n_skip:
             self._frames.pop(0)
-        return self._get_stacked(), reward, done, info
+        return self._get_stacked(), reward, terminated, truncated, info
 
     def _get_stacked(self):
         # Pick every n_skip-th frame from the buffer
@@ -140,14 +146,25 @@ class SkipFrame(gym.Wrapper):
         super().__init__(env)
         self.skip = skip
 
+    def reset(self, **kwargs):
+        result = self.env.reset(**kwargs)
+        obs, info = result if isinstance(result, tuple) else (result, {})
+        return obs, info
+
     def step(self, action):
         total_reward = 0.0
+        terminated, truncated = False, False
         for _ in range(self.skip):
-            obs, reward, done, info = self.env.step(action)
+            result = self.env.step(action)
+            if len(result) == 5:
+                obs, reward, terminated, truncated, info = result
+            else:
+                obs, reward, terminated, info = result
+                truncated = False
             total_reward += reward
-            if done:
+            if terminated or truncated:
                 break
-        return obs, total_reward, done, info
+        return obs, total_reward, terminated, truncated, info
 
 
 # ---------------------------------------------------------------------------
