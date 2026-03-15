@@ -23,7 +23,7 @@ def test_base_env(n_steps=200):
     print("TEST 1: Base environment (pixel observations)")
     print("=" * 60)
 
-    env = gym_super_mario_bros.make("SuperMarioBros-1-1-v3")
+    env = gym_super_mario_bros.make("SuperMarioBros-1-1-v0")
     env = JoypadSpace(env, SIMPLE_MOVEMENT)
 
     print(f"\nObservation space: {env.observation_space}")

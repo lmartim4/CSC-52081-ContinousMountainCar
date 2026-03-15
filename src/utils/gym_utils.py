@@ -80,7 +80,7 @@ class SMBRamWrapper(gym.ObservationWrapper):
         return im_crop
     
 
-def load_smb_env(name='SuperMarioBros-1-1-v3', crop_dim=[0,16,0,13], n_stack=2, n_skip=4):
+def load_smb_env(name='SuperMarioBros-1-1-v0', crop_dim=[0,16,0,13], n_stack=2, n_skip=4):
     '''
     Wrapper function for loading and processing smb env
     '''

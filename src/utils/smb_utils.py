@@ -67,9 +67,8 @@ class smb_grid:
                 address = self.tile_loc_to_ram_address(x_loc, y_loc) 
                 #bg_screen2[j, i] = env.unwrapped.ram[address]
                 
-                # Convert all types of tile to 1
-                if self.ram[address] != 0:
-                    rendered_screen[j, i] = 1
+                # Store the raw metatile ID (non-zero = some solid tile)
+                rendered_screen[j, i] = self.ram[address]
                     
         # Add mario
         x_loc = (self.mario_x + 8) // 16

@@ -5,7 +5,7 @@ from typing import List
 
 
 # --- Environment ---
-ENV_ID = "SuperMarioBros-1-1-v3"
+ENV_ID = "SuperMarioBros-1-1-v0"
 SIMPLE_MOVEMENT = True  # Use simplified action space (7 actions)
 
 # --- Pixel observation settings ---
