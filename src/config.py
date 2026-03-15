@@ -36,19 +36,18 @@ class DQNConfig:
 
 @dataclass
 class PPOConfig:
-    """Hyperparameters for PPO agent."""
-    learning_rate: float = 1e-4
-    n_steps: int = 512
-    batch_size: int = 64
-    n_epochs: int = 10
-    gamma: float = 0.99
-    gae_lambda: float = 0.95
-    clip_range: float = 0.2
-    ent_coef: float = 0.0
-    vf_coef: float = 0.5
-    max_grad_norm: float = 0.5
-    total_timesteps: int = 2_000_000
-    policy: str = "CnnPolicy"
+    learning_rate = 2.5e-4
+    n_steps = 512
+    batch_size = 128
+    n_epochs = 4
+    gamma = 0.99
+    gae_lambda = 0.95
+    clip_range = 0.1
+    ent_coef = 0.01
+    vf_coef = 0.5
+    max_grad_norm = 0.5
+    total_timesteps = 10_000_000
+    policy = "CnnPolicy"
 
 
 @dataclass
