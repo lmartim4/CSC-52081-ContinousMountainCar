@@ -1,187 +1,150 @@
-"""Wrappers for pixel-based observations: grayscale, resize, frame stacking."""
+"""Pixel-based wrappers adapted from vietnh1009/Super-mario-bros-PPO-pytorch.
 
-import gym
+Key improvements over vanilla wrappers:
+  - Custom reward shaping (score bonus, flag/death penalty)
+  - Max-pooling over last 2 skip frames (reduces NES sprite flickering)
+  - Built-in frame stacking inside the skip wrapper
+  - SubprocVecEnv support for parallel environments
+
+Reference: https://github.com/vietnh1009/Super-mario-bros-PPO-pytorch
+"""
+
+import cv2
 import gym_super_mario_bros
+import numpy as np
+from gym import spaces, Wrapper
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT, COMPLEX_MOVEMENT
 from nes_py.wrappers import JoypadSpace
-import numpy as np
-from gym import spaces
-from collections import deque
 
-from src.config import FRAME_SHAPE, FRAME_STACK, GRAYSCALE, ENV_ID, SIMPLE_MOVEMENT as USE_SIMPLE
+from src.config import ENV_ID, SIMPLE_MOVEMENT as USE_SIMPLE
 
 
-class GrayScaleObservation(gym.ObservationWrapper):
-    """Convert RGB observation to grayscale."""
+def process_frame(frame):
+    """Convert RGB frame to grayscale 84x84 normalized float."""
+    if frame is not None:
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        frame = cv2.resize(frame, (84, 84), interpolation=cv2.INTER_AREA)
+        return frame.astype(np.float32) / 255.0
+    return np.zeros((84, 84), dtype=np.float32)
+
+
+class CustomReward(Wrapper):
+    """Custom reward shaping from vietnh1009's implementation.
+
+    - Adds score-based reward: (score_delta) / 40
+    - Flag reached: +50
+    - Death / timeout: -50
+    - All rewards scaled by /10
+    """
 
     def __init__(self, env):
         super().__init__(env)
-        h, w = self.observation_space.shape[:2]
         self.observation_space = spaces.Box(
-            low=0, high=255, shape=(h, w, 1), dtype=np.uint8
+            low=0.0, high=1.0, shape=(84, 84, 1), dtype=np.float32
         )
-
-    def reset(self, **kwargs):
-        kwargs.pop('seed', None)
-        kwargs.pop('options', None)
-        result = self.env.reset(**kwargs)
-        obs, info = result if isinstance(result, tuple) else (result, {})
-        return self.observation(obs), info
+        self.curr_score = 0
+        self.current_x = 40
 
     def step(self, action):
         result = self.env.step(action)
         if len(result) == 5:
-            obs, reward, done, truncated, info = result
+            state, reward, done, truncated, info = result
         else:
-            obs, reward, done, info = result
+            state, reward, done, info = result
             truncated = False
-        return self.observation(obs), reward, done, truncated, info
 
-    def observation(self, obs):
-        gray = np.mean(obs, axis=2, keepdims=True).astype(np.uint8)
-        return gray
+        state = process_frame(state)[:, :, np.newaxis]
 
+        # Score-based reward
+        reward += (info["score"] - self.curr_score) / 40.0
+        self.curr_score = info["score"]
 
-class ResizeObservation(gym.ObservationWrapper):
-    """Resize observation to a target shape."""
+        # Flag / death bonus
+        if done:
+            if info.get("flag_get", False):
+                reward += 50
+            else:
+                reward -= 50
 
-    def __init__(self, env, shape):
-        super().__init__(env)
-        self.shape = shape
-        channels = self.observation_space.shape[2]
-        self.observation_space = spaces.Box(
-            low=0, high=255, shape=(shape[0], shape[1], channels), dtype=np.uint8
-        )
+        self.current_x = info.get("x_pos", self.current_x)
+        return state, reward / 10.0, done, truncated, info
 
     def reset(self, **kwargs):
         kwargs.pop('seed', None)
         kwargs.pop('options', None)
+        self.curr_score = 0
+        self.current_x = 40
         result = self.env.reset(**kwargs)
-        obs, info = result if isinstance(result, tuple) else (result, {})
-        return self.observation(obs), info
-
-    def step(self, action):
-        result = self.env.step(action)
-        if len(result) == 5:
-            obs, reward, done, truncated, info = result
-        else:
-            obs, reward, done, info = result
-            truncated = False
-        return self.observation(obs), reward, done, truncated, info
-
-    def observation(self, obs):
-        import cv2
-        resized = cv2.resize(obs, (self.shape[1], self.shape[0]), interpolation=cv2.INTER_AREA)
-        if resized.ndim == 2:
-            resized = resized[:, :, np.newaxis]
-        return resized
+        obs = result[0] if isinstance(result, tuple) else result
+        return process_frame(obs)[:, :, np.newaxis], {}
 
 
-class FrameStack(gym.Wrapper):
-    """Stack the last k frames as a single observation."""
+class CustomSkipFrame(Wrapper):
+    """Frame skip with max-pooling + built-in frame stacking.
 
-    def __init__(self, env, k):
-        super().__init__(env)
-        self.k = k
-        self.frames = deque(maxlen=k)
-        h, w, c = env.observation_space.shape
-        self.observation_space = spaces.Box(
-            low=0, high=255, shape=(h, w, c * k), dtype=np.uint8
-        )
-
-    def reset(self, **kwargs):
-        kwargs.pop('seed', None)
-        kwargs.pop('options', None)
-        result = self.env.reset(**kwargs)
-        obs, info = result if isinstance(result, tuple) else (result, {})
-        for _ in range(self.k):
-            self.frames.append(obs)
-        return self._get_obs(), info
-
-    def step(self, action):
-        result = self.env.step(action)
-        if len(result) == 5:
-            obs, reward, done, truncated, info = result
-        else:
-            obs, reward, done, info = result
-            truncated = False
-        self.frames.append(obs)
-        return self._get_obs(), reward, done, truncated, info
-
-    def _get_obs(self):
-        return np.concatenate(list(self.frames), axis=2)
-
-
-class SkipFrame(gym.Wrapper):
-    """Return every skip-th frame, repeating the action in between."""
+    - Repeats action for `skip` frames, sums rewards
+    - Max-pools over the last skip//2 frames (reduces NES flickering)
+    - Maintains a stack of `skip` frames as the observation
+    - Output shape: (84, 84, skip)
+    """
 
     def __init__(self, env, skip=4):
         super().__init__(env)
         self.skip = skip
-
-    def reset(self, **kwargs):
-        kwargs.pop('seed', None)
-        kwargs.pop('options', None)
-        result = self.env.reset(**kwargs)
-        obs = result[0] if isinstance(result, tuple) else result
-        return obs, {}
-
-    def step(self, action):
-        total_reward = 0.0
-        for _ in range(self.skip):
-            result = self.env.step(action)
-            if len(result) == 5:
-                obs, reward, done, truncated, info = result
-            else:
-                obs, reward, done, info = result
-            total_reward += reward
-            if done:
-                break
-        return obs, total_reward, done, False, info
-
-
-class NormalizeObservation(gym.ObservationWrapper):
-    """Normalize pixel values to [0, 1]."""
-
-    def __init__(self, env):
-        super().__init__(env)
         self.observation_space = spaces.Box(
-            low=0.0, high=1.0,
-            shape=self.observation_space.shape,
-            dtype=np.float32,
+            low=0.0, high=1.0, shape=(84, 84, skip), dtype=np.float32
         )
+        self.states = np.zeros((84, 84, skip), dtype=np.float32)
+
+    def step(self, action):
+        total_reward = 0
+        last_states = []
+        done = False
+        truncated = False
+        info = {}
+
+        for i in range(self.skip):
+            state, reward, done, truncated, info = self.env.step(action)
+            total_reward += reward
+            if i >= self.skip // 2:
+                last_states.append(state)
+            if done or truncated:
+                return self.states.astype(np.float32), total_reward, done, truncated, info
+
+        # Max-pool over last frames to reduce flickering
+        max_state = np.max(np.stack(last_states, axis=0), axis=0)
+        self.states[:, :, :-1] = self.states[:, :, 1:]
+        self.states[:, :, -1] = max_state[:, :, 0]
+        return self.states.astype(np.float32), total_reward, done, truncated, info
 
     def reset(self, **kwargs):
         kwargs.pop('seed', None)
         kwargs.pop('options', None)
-        result = self.env.reset(**kwargs)
-        obs, info = result if isinstance(result, tuple) else (result, {})
-        return self.observation(obs), info
-
-    def step(self, action):
-        result = self.env.step(action)
-        if len(result) == 5:
-            obs, reward, done, truncated, info = result
-        else:
-            obs, reward, done, info = result
-            truncated = False
-        return self.observation(obs), reward, done, truncated, info
-
-    def observation(self, obs):
-        return np.array(obs, dtype=np.float32) / 255.0
+        state, info = self.env.reset(**kwargs)
+        self.states = np.stack([state[:, :, 0]] * self.skip, axis=-1).astype(np.float32)
+        return self.states.astype(np.float32), info
 
 
-def make_pixel_env(env_id=ENV_ID, frame_shape=FRAME_SHAPE, frame_stack=FRAME_STACK,
-                   grayscale=GRAYSCALE, skip=4, normalize=True):
-    """Create a fully wrapped pixel-based Mario environment."""
+def make_pixel_env(env_id=ENV_ID, skip=4):
+    """Create a single pixel-based Mario environment."""
     env = gym_super_mario_bros.make(env_id)
     actions = SIMPLE_MOVEMENT if USE_SIMPLE else COMPLEX_MOVEMENT
     env = JoypadSpace(env, actions)
-    env = SkipFrame(env, skip=skip)
-    if grayscale:
-        env = GrayScaleObservation(env)
-    env = ResizeObservation(env, shape=frame_shape)
-    if normalize:
-        env = NormalizeObservation(env)
-    env = FrameStack(env, k=frame_stack)
+    env = CustomReward(env)
+    env = CustomSkipFrame(env, skip=skip)
     return env
+
+
+def make_pixel_vec_env(env_id=ENV_ID, skip=4, num_envs=8):
+    """Create parallel pixel-based Mario environments using SubprocVecEnv.
+
+    Each env runs in its own process — 8 envs = ~8x sample throughput.
+    """
+    from stable_baselines3.common.vec_env import SubprocVecEnv
+
+    def _make_env(env_id, skip):
+        def _init():
+            return make_pixel_env(env_id=env_id, skip=skip)
+        return _init
+
+    return SubprocVecEnv([_make_env(env_id, skip) for _ in range(num_envs)])
