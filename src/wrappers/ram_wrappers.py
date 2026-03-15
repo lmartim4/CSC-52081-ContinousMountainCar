@@ -3,12 +3,16 @@
 Builds a compact 13x16 grid directly from the NES RAM, encoding tiles,
 enemies, and Mario's position — no pixel processing needed.
 
+Includes the same reward shaping as the pixel pipeline (vietnh1009)
+so that pixel vs RAM comparisons are fair.
+
 Delegates grid construction to the external submodule:
   external/yumouwei-smb/smb_utils.py  (smb_grid class)
 
 References:
   - RAM map: https://datacrystal.tcrf.net/wiki/Super_Mario_Bros./RAM_map
   - Tile grid: yumouwei/super-mario-bros-reinforcement-learning (smb_utils.py)
+  - Reward shaping: vietnh1009/Super-mario-bros-PPO-pytorch
 """
 
 import gym
@@ -32,6 +36,52 @@ _POWERUP_Y_SCREEN = 0x00D4
 # Visible grid dimensions (what the screen shows)
 VISIBLE_COLS = 16
 VISIBLE_ROWS = 13
+
+
+class CustomRewardRAM(gym.Wrapper):
+    """Custom reward shaping (same as pixel pipeline for fair comparison).
+
+    - Adds score-based reward: (score_delta) / 40
+    - Flag reached: +50
+    - Death / timeout: -50
+    - All rewards scaled by /10
+    """
+
+    def __init__(self, env):
+        super().__init__(env)
+        self.curr_score = 0
+        self.current_x = 40
+
+    def step(self, action):
+        result = self.env.step(action)
+        if len(result) == 5:
+            obs, reward, done, truncated, info = result
+        else:
+            obs, reward, done, info = result
+            truncated = False
+
+        # Score-based reward
+        reward += (info["score"] - self.curr_score) / 40.0
+        self.curr_score = info["score"]
+
+        # Flag / death bonus
+        if done:
+            if info.get("flag_get", False):
+                reward += 50
+            else:
+                reward -= 50
+
+        self.current_x = info.get("x_pos", self.current_x)
+        return obs, reward / 10.0, done, truncated, info
+
+    def reset(self, **kwargs):
+        kwargs.pop('seed', None)
+        kwargs.pop('options', None)
+        self.curr_score = 0
+        self.current_x = 40
+        result = self.env.reset(**kwargs)
+        obs = result[0] if isinstance(result, tuple) else result
+        return obs, {}
 
 
 class RAMGridObservation(gym.ObservationWrapper):
@@ -184,24 +234,8 @@ def make_symbolic_env(
 ):
     """Create a symbolic-observation Super Mario Bros environment.
 
-    Parameters
-    ----------
-    env_id : str
-        gym-super-mario-bros environment id.
-    skip : int
-        Number of frames to repeat each action (SkipFrame wrapper).
-    n_stack : int
-        Number of grid frames to stack (temporal information).
-        Set to 1 to disable stacking.
-    n_skip : int
-        Gap between stacked frames.
-    flatten : bool
-        If True, flatten the observation to 1-D (for MlpPolicy).
-        If False, return shape (13, 16, n_stack).
-
-    Returns
-    -------
-    gym.Env
+    Pipeline: JoypadSpace -> CustomRewardRAM -> SkipFrame -> RAMGridObservation
+              -> FrameStackGrid -> FlattenGrid
     """
     import gym_super_mario_bros
     from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
@@ -209,6 +243,7 @@ def make_symbolic_env(
 
     env = gym_super_mario_bros.make(env_id)
     env = JoypadSpace(env, SIMPLE_MOVEMENT)
+    env = CustomRewardRAM(env)
     env = SkipFrame(env, skip=skip)
     env = RAMGridObservation(env)
 
@@ -219,3 +254,28 @@ def make_symbolic_env(
         env = FlattenGrid(env)
 
     return env
+
+
+def make_symbolic_vec_env(
+    env_id="SuperMarioBros-1-1-v3",
+    skip=4,
+    n_stack=4,
+    n_skip=1,
+    flatten=False,
+    num_envs=8,
+):
+    """Create parallel symbolic-observation environments using SubprocVecEnv."""
+    from stable_baselines3.common.vec_env import SubprocVecEnv
+
+    def _make_env(env_id, skip, n_stack, n_skip, flatten):
+        def _init():
+            return make_symbolic_env(
+                env_id=env_id, skip=skip,
+                n_stack=n_stack, n_skip=n_skip, flatten=flatten,
+            )
+        return _init
+
+    return SubprocVecEnv([
+        _make_env(env_id, skip, n_stack, n_skip, flatten)
+        for _ in range(num_envs)
+    ])

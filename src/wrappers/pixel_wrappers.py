@@ -20,12 +20,12 @@ from src.config import ENV_ID, SIMPLE_MOVEMENT as USE_SIMPLE
 
 
 def process_frame(frame):
-    """Convert RGB frame to grayscale 84x84 normalized float."""
+    """Convert RGB frame to grayscale 84x84 uint8."""
     if frame is not None:
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
         frame = cv2.resize(frame, (84, 84), interpolation=cv2.INTER_AREA)
-        return frame.astype(np.float32) / 255.0
-    return np.zeros((84, 84), dtype=np.float32)
+        return frame.astype(np.uint8)
+    return np.zeros((84, 84), dtype=np.uint8)
 
 
 class CustomReward(Wrapper):
@@ -40,7 +40,7 @@ class CustomReward(Wrapper):
     def __init__(self, env):
         super().__init__(env)
         self.observation_space = spaces.Box(
-            low=0.0, high=1.0, shape=(84, 84, 1), dtype=np.float32
+            low=0, high=255, shape=(84, 84, 1), dtype=np.uint8
         )
         self.curr_score = 0
         self.current_x = 40
@@ -92,9 +92,9 @@ class CustomSkipFrame(Wrapper):
         super().__init__(env)
         self.skip = skip
         self.observation_space = spaces.Box(
-            low=0.0, high=1.0, shape=(84, 84, skip), dtype=np.float32
+            low=0, high=255, shape=(84, 84, skip), dtype=np.uint8
         )
-        self.states = np.zeros((84, 84, skip), dtype=np.float32)
+        self.states = np.zeros((84, 84, skip), dtype=np.uint8)
 
     def step(self, action):
         total_reward = 0
@@ -109,20 +109,20 @@ class CustomSkipFrame(Wrapper):
             if i >= self.skip // 2:
                 last_states.append(state)
             if done or truncated:
-                return self.states.astype(np.float32), total_reward, done, truncated, info
+                return self.states.copy(), total_reward, done, truncated, info
 
         # Max-pool over last frames to reduce flickering
         max_state = np.max(np.stack(last_states, axis=0), axis=0)
         self.states[:, :, :-1] = self.states[:, :, 1:]
         self.states[:, :, -1] = max_state[:, :, 0]
-        return self.states.astype(np.float32), total_reward, done, truncated, info
+        return self.states.copy(), total_reward, done, truncated, info
 
     def reset(self, **kwargs):
         kwargs.pop('seed', None)
         kwargs.pop('options', None)
         state, info = self.env.reset(**kwargs)
-        self.states = np.stack([state[:, :, 0]] * self.skip, axis=-1).astype(np.float32)
-        return self.states.astype(np.float32), info
+        self.states = np.stack([state[:, :, 0]] * self.skip, axis=-1).astype(np.uint8)
+        return self.states.copy(), info
 
 
 def make_pixel_env(env_id=ENV_ID, skip=4):
