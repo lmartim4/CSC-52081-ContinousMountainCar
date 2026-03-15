@@ -60,19 +60,19 @@ def test_wrapper_shape():
     print("=" * 60)
 
     env = make_symbolic_env(n_stack=1, flatten=False)
-    obs = env.reset()
+    obs, _ = env.reset()
     print(f"  n_stack=1, flatten=False -> shape: {obs.shape}, dtype: {obs.dtype}")
     assert obs.shape == (VISIBLE_ROWS, VISIBLE_COLS), f"Expected (13, 16), got {obs.shape}"
     env.close()
 
     env = make_symbolic_env(n_stack=4, flatten=False)
-    obs = env.reset()
+    obs, _ = env.reset()
     print(f"  n_stack=4, flatten=False -> shape: {obs.shape}, dtype: {obs.dtype}")
     assert obs.shape == (VISIBLE_ROWS, VISIBLE_COLS, 4), f"Expected (13, 16, 4), got {obs.shape}"
     env.close()
 
     env = make_symbolic_env(n_stack=4, flatten=True)
-    obs = env.reset()
+    obs, _ = env.reset()
     expected_flat = VISIBLE_ROWS * VISIBLE_COLS * 4
     print(f"  n_stack=4, flatten=True  -> shape: {obs.shape}, dtype: {obs.dtype}")
     assert obs.shape == (expected_flat,), f"Expected ({expected_flat},), got {obs.shape}"
@@ -87,7 +87,7 @@ def test_grid_content(n_steps=300):
     print("=" * 60)
 
     env = make_symbolic_env(n_stack=1, flatten=False)
-    obs = env.reset()
+    obs, _ = env.reset()
 
     found_mario = False
     found_solid = False
@@ -97,7 +97,8 @@ def test_grid_content(n_steps=300):
 
     for step in range(n_steps):
         action = actions_sequence[step % len(actions_sequence)]
-        obs, reward, done, info = env.step(action)
+        obs, reward, terminated, truncated, info = env.step(action)
+        done = terminated or truncated
         max_x = max(max_x, info.get("x_pos", 0))
 
         grid = obs if obs.ndim == 2 else obs[:, :, -1]
@@ -116,7 +117,7 @@ def test_grid_content(n_steps=300):
                   f"status={info.get('status')}, time={info.get('time')}")
 
         if done:
-            obs = env.reset()
+            obs, _ = env.reset()
 
     env.close()
 
@@ -137,15 +138,15 @@ def test_grid_values(n_steps=100):
     print("=" * 60)
 
     env = make_symbolic_env(n_stack=1, flatten=False)
-    obs = env.reset()
+    obs, _ = env.reset()
     all_values = set()
 
     for step in range(n_steps):
         action = env.action_space.sample()
-        obs, reward, done, info = env.step(action)
+        obs, reward, terminated, truncated, info = env.step(action)
         all_values.update(np.unique(obs.astype(int)).tolist())
-        if done:
-            obs = env.reset()
+        if terminated or truncated:
+            obs, _ = env.reset()
 
     env.close()
 
@@ -163,12 +164,12 @@ def test_frame_stack():
     print("=" * 60)
 
     env = make_symbolic_env(n_stack=4, n_skip=1, flatten=False)
-    obs = env.reset()
+    obs, _ = env.reset()
 
     for _ in range(20):
-        obs, _, done, _ = env.step(1)
-        if done:
-            obs = env.reset()
+        obs, _, terminated, truncated, _ = env.step(1)
+        if terminated or truncated:
+            obs, _ = env.reset()
 
     frames_differ = any(
         not np.array_equal(obs[:, :, i], obs[:, :, i + 1])
