@@ -231,11 +231,12 @@ def make_symbolic_env(
     n_stack=4,
     n_skip=1,
     flatten=False,
+    monitor=False,
 ):
     """Create a symbolic-observation Super Mario Bros environment.
 
     Pipeline: JoypadSpace -> CustomRewardRAM -> SkipFrame -> RAMGridObservation
-              -> FrameStackGrid -> FlattenGrid
+              -> FrameStackGrid -> FlattenGrid -> Monitor
     """
     import gym_super_mario_bros
     from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
@@ -252,6 +253,10 @@ def make_symbolic_env(
 
     if flatten:
         env = FlattenGrid(env)
+
+    if monitor:
+        from stable_baselines3.common.monitor import Monitor
+        env = Monitor(env)
 
     return env
 
@@ -279,3 +284,40 @@ def make_symbolic_vec_env(
         _make_env(env_id, skip, n_stack, n_skip, flatten)
         for _ in range(num_envs)
     ])
+
+
+def make_symbolic_multitask_vec_env(
+    env_ids=("SuperMarioBros-1-1-v3", "SuperMarioBros-1-2-v3"),
+    skip=4,
+    n_stack=4,
+    n_skip=1,
+    flatten=False,
+    envs_per_level=4,
+):
+    """Create parallel envs across multiple levels for multi-task training.
+
+    Args:
+        envs_per_level: int or list of ints. If int, same count for all levels.
+            If list, specifies count per level (must match len(env_ids)).
+    """
+    from stable_baselines3.common.vec_env import SubprocVecEnv
+
+    if isinstance(envs_per_level, int):
+        counts = [envs_per_level] * len(env_ids)
+    else:
+        counts = list(envs_per_level)
+
+    def _make_env(env_id, skip, n_stack, n_skip, flatten):
+        def _init():
+            return make_symbolic_env(
+                env_id=env_id, skip=skip,
+                n_stack=n_stack, n_skip=n_skip, flatten=flatten,
+            )
+        return _init
+
+    env_fns = []
+    for eid, count in zip(env_ids, counts):
+        for _ in range(count):
+            env_fns.append(_make_env(eid, skip, n_stack, n_skip, flatten))
+
+    return SubprocVecEnv(env_fns)

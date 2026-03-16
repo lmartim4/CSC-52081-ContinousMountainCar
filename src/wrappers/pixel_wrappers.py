@@ -125,13 +125,16 @@ class CustomSkipFrame(Wrapper):
         return self.states.copy(), info
 
 
-def make_pixel_env(env_id=ENV_ID, skip=4):
+def make_pixel_env(env_id=ENV_ID, skip=4, monitor=False):
     """Create a single pixel-based Mario environment."""
     env = gym_super_mario_bros.make(env_id)
     actions = SIMPLE_MOVEMENT if USE_SIMPLE else COMPLEX_MOVEMENT
     env = JoypadSpace(env, actions)
     env = CustomReward(env)
     env = CustomSkipFrame(env, skip=skip)
+    if monitor:
+        from stable_baselines3.common.monitor import Monitor
+        env = Monitor(env)
     return env
 
 

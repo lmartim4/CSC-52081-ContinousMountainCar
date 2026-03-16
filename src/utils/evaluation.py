@@ -33,7 +33,11 @@ def evaluate_agent(model, env, n_episodes=30, deterministic=True):
 
 def run_episode(model, env, deterministic=True, render=False):
     """Run a single episode and return (total_reward, length, flag_reached)."""
-    obs = env.reset()
+    reset_result = env.reset()
+    if isinstance(reset_result, tuple):
+        obs = reset_result[0]
+    else:
+        obs = reset_result
     total_reward = 0.0
     length = 0
     done = False
@@ -41,12 +45,17 @@ def run_episode(model, env, deterministic=True, render=False):
 
     while not done:
         action, _ = model.predict(obs, deterministic=deterministic)
-        obs, reward, done, info = env.step(action)
-        total_reward += reward
+        step_result = env.step(int(action))
+        if len(step_result) == 5:
+            obs, reward, terminated, truncated, info = step_result
+            done = terminated or truncated
+        else:
+            obs, reward, done, info = step_result
+        total_reward += float(reward)
         length += 1
         if render:
             env.render()
-        if info.get("flag_get", False):
+        if isinstance(info, dict) and info.get("flag_get", False):
             flag = True
 
     return total_reward, length, flag
