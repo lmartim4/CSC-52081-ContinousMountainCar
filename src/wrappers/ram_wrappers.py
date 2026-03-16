@@ -22,12 +22,13 @@ from gym import spaces
 
 from ..utils.smb_utils import smb_grid
 
-# Grid encoding values (same convention as smb_grid, plus powerup)
-EMPTY = 0
-SOLID = 1
-ENEMY = -1
-MARIO = 2
-POWERUP = 3
+# Grid encoding values (same convention as smb_grid, plus powerup and fire)
+EMPTY   =  0
+SOLID   =  1
+ENEMY   = -1
+MARIO   =  2
+POWERUP =  3
+FIRE    =  4   # fire-snake bead (OAM tile 0x65)
 
 # Powerup RAM addresses
 _POWERUP_DRAWN = 0x0014
@@ -102,7 +103,7 @@ class RAMGridObservation(gym.ObservationWrapper):
     def __init__(self, env):
         super().__init__(env)
         self.observation_space = spaces.Box(
-            low=-1, high=3,
+            low=-1, high=4,
             shape=(VISIBLE_ROWS, VISIBLE_COLS),
             dtype=np.float32,
         )
@@ -142,7 +143,7 @@ class FlattenGrid(gym.ObservationWrapper):
         super().__init__(env)
         flat_size = int(np.prod(self.observation_space.shape)) + 1
         low = np.full((flat_size,), -1, dtype=np.float32)
-        high = np.full((flat_size,), 3, dtype=np.float32)
+        high = np.full((flat_size,), 4, dtype=np.float32)
         low[-1] = 0.0
         high[-1] = 1.0
         self.observation_space = spaces.Box(low=low, high=high, dtype=np.float32)
@@ -165,7 +166,7 @@ class FrameStackGrid(gym.Wrapper):
         self.n_skip = n_skip
         base_shape = env.observation_space.shape  # (13, 16)
         self.observation_space = spaces.Box(
-            low=-1, high=3,
+            low=-1, high=4,
             shape=(*base_shape, n_stack),
             dtype=np.float32,
         )
