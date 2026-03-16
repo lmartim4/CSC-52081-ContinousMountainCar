@@ -9,6 +9,7 @@ numpy
 pandas
 matplotlib
 tensorboard
+setuptools<81
 opencv-python
 pillow
 pyglet
