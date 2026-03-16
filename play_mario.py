@@ -29,7 +29,7 @@ import numpy as np
 import time
 
 
-ENV_ID = "SuperMarioBros-1-3-v3"
+ENV_ID = "SuperMarioBros-1-2-v3"
 
 env = gym_super_mario_bros.make(ENV_ID)
 env = JoypadSpace(env, SIMPLE_MOVEMENT)
