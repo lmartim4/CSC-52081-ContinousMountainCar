@@ -2,12 +2,6 @@ __pycache__
 .venv
 *.pyc
 
-# Training artifacts
-models/
-logs/
-results/*.csv
-results/*.png
-
 # IDE
 .vscode/
 .idea/
