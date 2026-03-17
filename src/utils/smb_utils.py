@@ -7,12 +7,6 @@ Created on Sun Jul 10 18:52:21 2022
 """
 
 import numpy as np
-import matplotlib.pyplot as plt
-
-import gym
-import gym_super_mario_bros
-from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
-
 
 class smb_grid:
     

@@ -19,14 +19,12 @@ Keyboard mapping:
   Nothing     -> action 0 (noop)
 """
 
-import gym
 import gym_super_mario_bros
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
 from nes_py.wrappers import JoypadSpace
 import pyglet
 from pyglet.window import key
 import numpy as np
-import time
 
 
 ENV_ID = "SuperMarioBros-1-2-v3"
