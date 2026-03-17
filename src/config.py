@@ -20,18 +20,18 @@ GRID_SHAPE = (13, 16)  # rows x cols for the symbolic grid
 @dataclass
 class DQNConfig:
     """Hyperparameters for DQN agent."""
-    learning_rate: float = 1e-4
+    learning_rate: float = 0.00025
     buffer_size: int = 100_000
     learning_starts: int = 10_000
     batch_size: int = 32
-    gamma: float = 0.99
-    target_update_interval: int = 1_000
+    gamma: float = 0.9
+    target_update_interval: int = 10_000
     exploration_fraction: float = 0.1
     exploration_initial_eps: float = 1.0
-    exploration_final_eps: float = 0.01
-    train_freq: int = 4
+    exploration_final_eps: float = 0.1
+    train_freq: int = 3
     total_timesteps: int = 2_000_000
-    policy: str = "CnnPolicy"  # "CnnPolicy" for pixels, "MlpPolicy" for symbolic
+    policy: str = "CnnPolicy"
 
 
 @dataclass
@@ -39,16 +39,16 @@ class PPOConfig:
     """Hyperparameters for PPO agent."""
     learning_rate: float = 2.5e-4
     n_steps: int = 512
-    batch_size: int = 128
+    batch_size: int = 256
     n_epochs: int = 4
-    gamma: float = 0.99
+    gamma: float = 0.9
     gae_lambda: float = 0.95
     clip_range: float = 0.2
     ent_coef: float = 0.01
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
-    total_timesteps: int = 10_000_000
-    policy: str = "CnnPolicy"
+    total_timesteps: int = 2_000_000
+    policy: str = "MlpPolicy"
 
 
 @dataclass
