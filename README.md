@@ -53,10 +53,8 @@ We compare two observation pipelines under the **same PPO algorithm and reward s
 | 1 | DQN baseline on 1-1 | Fails to converge in 200k steps → motivates PPO |
 | 2 | Pixel PPO on 1-1 | Converges (on Colab GPU) |
 | 3 | Symbolic PPO on 1-1 | **100% flag rate, ~500k steps on CPU** |
-| 4 | Transfer learning: 1-1 → 1-2 | Learns 1-2 successfully |
-| 5 | Catastrophic forgetting check | 1-2 fine-tuned model scores 0% on 1-1 |
-| 6 | Multi-task (1-1 + 1-2) | Negative result: only 1-1 converges due to reward imbalance |
-| 7 | Curriculum via random starts | Improves level generalization |
+| 4 | Transfer learning: 1-1 → 1-2 | Learns 1-2 successfully; fine-tuned model scores 0% on 1-1 (catastrophic forgetting) |
+| 5 | Curriculum via random starts (all World 1) | Improves level generalization |
 
 ---
 
@@ -133,10 +131,10 @@ The HUD shows real-time steps, reward, X position, and current action. Edit `ENV
 # Symbolic PPO agent on World 1-1
 python watch_agent.py --model models/symbolic_ppo/final_model --env SuperMarioBros-1-1-v3
 
-# Symbolic PPO agent on World 1-2 (transfer learned)
+# Symbolic PPO agent on World 1-2 (requires running notebook 4 first)
 python watch_agent.py --model models/symbolic_ppo_1_2/final_model --env SuperMarioBros-1-2-v3
 
-# Pixel PPO agent (CNN) — add --pixel flag
+# Pixel PPO agent (CNN) — requires running notebook 2 first, add --pixel flag
 python watch_agent.py --model models/pixel_ppo/final_model --env SuperMarioBros-1-1-v3 --pixel
 
 # Run for N episodes
@@ -187,8 +185,7 @@ Training is done through numbered Jupyter notebooks in [notebooks/](notebooks/).
 | [2_pixel_ppo_w1l1_train.ipynb](notebooks/2_pixel_ppo_w1l1_train.ipynb) | Pixel PPO (CnnPolicy) on 1-1 | Best run on Colab T4 GPU |
 | [3_symbolic_ppo_w1l1_train.ipynb](notebooks/3_symbolic_ppo_w1l1_train.ipynb) | **Symbolic PPO (MlpPolicy) on 1-1** | Main experiment; runs on CPU |
 | [4_symbolic_ppo_transfer_w1l2_train.ipynb](notebooks/4_symbolic_ppo_transfer_w1l2_train.ipynb) | Transfer learning: fine-tune on 1-2 | Loads 1-1 model, continues on 1-2 |
-| [5_symbolic_ppo_multitask_w1_train.ipynb](notebooks/5_symbolic_ppo_multitask_w1_train.ipynb) | Multi-task: 1-1 + 1-2 jointly | Negative result (see Results) |
-| [6_symbolic_ppo_world1_random_train.ipynb](notebooks/6_symbolic_ppo_world1_random_train.ipynb) | Curriculum via random starts | `RandomStartWrapper` for generalization |
+| [5_symbolic_ppo_world1_random_train.ipynb](notebooks/5_symbolic_ppo_world1_random_train.ipynb) | Curriculum via random starts (all World 1) | `RandomStartWrapper` across 1-1, 1-2, 1-3, 1-4 |
 
 Checkpoints are saved every 50,000 steps under `logs/<run_name>/` and final models under `models/`.
 
